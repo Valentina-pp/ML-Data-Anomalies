@@ -60,10 +60,11 @@ INNER JOIN pypl-edw.pp_access_views.dw_cc_transaction AS c11 ON c.cc_transid = c
 INNER JOIN pypl-edw.pp_access_views.cdim_country AS b23 ON upper(rtrim(c1.rcvr_cntry)) = upper(rtrim(b23.cntry_code))
 INNER JOIN pypl-edw.pp_access_views.cdim_country AS b24 ON upper(rtrim(c1.card_issuing_cntry)) = upper(rtrim(b24.cntry_code))
 WHERE 1 = 1
-AND c.cc_trans_created_date BETWEEN DATE '2022-03-30' AND DATE '2022-03-31'
-AND c11.cc_trans_created_date BETWEEN DATE '2022-03-30' AND DATE '2022-03-31'
-AND c1.cc_txn_cre_dt BETWEEN DATE '2022-03-30' AND DATE '2022-03-31'
+AND c.cc_trans_created_date BETWEEN DATE '2021-10-01' AND DATE '2022-03-31'
+AND c11.cc_trans_created_date BETWEEN DATE '2021-10-01' AND DATE '2022-03-31'
+AND c1.cc_txn_cre_dt BETWEEN DATE '2021-10-01' AND DATE '2022-03-31'
 AND upper(rtrim(c.cc_trans_status)) = 'S'
+AND upper(rtrim(c11.cc_trans_status)) = 'S'
 AND rtrim(upper(c.cctrans_type)) IN('C','Z')
 and card_issuing_cntry in ('US')
 and rcvr_cntry in ('US')
@@ -78,6 +79,8 @@ t.card_issuing_cntry,
 t.rcvr_cntry,
 t.rcvr_cntry_code,
 t.cc_trans_created_date,
+cal.day_of_wk,
+cal.day_of_wk_ddd_name,
 t.transaction_time,
 t.settlement_hour,
 t.card_brand,
@@ -89,8 +92,10 @@ t.currency_code,
 t.asp_range,
 t.ic_fee,
 t.assessment_fee,
-FORMAT('%s%%', CAST(ROUND((t.ic_fee/t.tpv ) * 100, 7) AS STRING)) AS ic_rate,
-FORMAT('%s%%', CAST(ROUND((t.assessment_fee/t.tpv ) * 100, 7) AS STRING)) AS assessment_rate,
+FORMAT('%s%%', CAST(ROUND((t.ic_fee/t.tpv ) * 100, 7) AS STRING)) AS ic_rate_perc,
+FORMAT('%s%%', CAST(ROUND((t.assessment_fee/t.tpv ) * 100, 7) AS STRING)) AS assessment_rate_perc,
+ROUND(t.ic_fee/t.tpv , 7)  AS ic_rate,
+ROUND(t.assessment_fee/t.tpv,7 ) AS assessment_rate,
 t.tpv,
 t.customer_id,
 t.merchant_id,
@@ -176,13 +181,15 @@ CASE
   ELSE 'MS Core Others'
 END AS product_flow
 from pypl-edw.pp_discovery_views.fact_payment_detail b
-left join pypl-edw.pp_access_views.cdim_payment_flow2 on b.pmt_flow_key=cdim_payment_flow2.pmt_flow_key2
+INNER JOIN  `pypl-edw`.pp_discovery_views.dim_calendar_day AS cal ON b.cal_dt = cal.cal_dt
+left join `pypl-edw`.pp_access_views.cdim_payment_flow2 on b.pmt_flow_key=cdim_payment_flow2.pmt_flow_key2
 join `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_1 t on b.cc_txnid = t.cc_transid
 where 1=1
-and b.cal_dt BETWEEN DATE '2022-03-30' AND DATE '2022-03-31'
+and b.cal_dt BETWEEN DATE '2021-10-01' AND DATE '2022-03-31'
 and b.is_pmt_official_y_n = 'Y'
 and b.cc_txnid <> 0
 ;
 
 
 SELECT * FROM `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_2 limit 1000;
+
