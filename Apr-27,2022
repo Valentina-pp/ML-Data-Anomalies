@@ -1,0 +1,188 @@
+drop table if exists `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_1;
+create table `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_1 CLUSTER BY cc_transid as
+SELECT
+c.cc_transid,
+c.cc_trans_created_date,
+c.cctrans_type,
+txn_Categ_code,
+intchg_plan_Code,
+CASE
+      WHEN extract(HOUR from CAST(c11.cc_trans_created_ts as DATETIME)) BETWEEN 0 AND 5 THEN '0:00 - 6:00'
+      WHEN extract(HOUR from CAST(c11.cc_trans_created_ts as DATETIME)) BETWEEN 6 AND 11 THEN '6:00 - 12:00'
+      WHEN extract(HOUR from CAST(c11.cc_trans_created_ts as DATETIME)) BETWEEN 12 AND 17 THEN '12:00 - 18:00'
+      WHEN extract(HOUR from CAST(c11.cc_trans_created_ts as DATETIME)) BETWEEN 18 AND 23 THEN '18:00 - 24:00'
+    END AS settlement_hour,
+format_datetime('%T',c11.cc_trans_created_ts) transaction_time,
+c.customer_id AS customer_id,
+c1.rcvr_id AS merchant_id,
+CASE
+WHEN upper(rtrim(c.cc_type)) = 'V' THEN 'Visa'
+WHEN upper(rtrim(c.cc_type)) = 'M' THEN 'Mastercard'
+WHEN upper(rtrim(c.cc_type)) = 'A' THEN 'AMEX'
+WHEN upper(rtrim(c.cc_type)) = 'D' THEN 'Discover'
+ELSE 'Others'
+END AS card_brand,
+ CASE
+      WHEN upper(rtrim(c.authorizer)) = 'S' THEN 'DEBIT'
+      WHEN upper(rtrim(c.authorizer)) <> 'S'
+       AND c.card_usage_key IN(
+        3, 4, 5
+      ) THEN 'DEBIT'
+      WHEN upper(rtrim(c.authorizer)) <> 'S'
+       AND c.card_usage_key IN(
+        1, 2
+      ) THEN 'CREDIT'
+      ELSE 'UNKNOWN'
+    END AS credit_debit,
+    CASE
+      WHEN c.trans_amt_usd <= 1 THEN '1.ASP1'
+      WHEN c.trans_amt_usd <= 10 THEN '2.ASP10'
+      WHEN c.trans_amt_usd <= 25 THEN '3.ASP25'
+      WHEN c.trans_amt_usd <= 50 THEN '4.ASP50'
+      WHEN c.trans_amt_usd <= 100 THEN '5.ASP100'
+      WHEN c.trans_amt_usd <= 500 THEN '6.ASP500'
+      ELSE '7.ELSE'
+    END AS asp_range,
+c.card_usage_key,
+c.currency_code,
+c.authorizer,
+c.acquirer,
+c1.card_issuing_cntry,
+c1.rcvr_cntry,
+c1.rcvr_cntry_code,
+c.intchg_fee_amt_usd AS ic_fee,
+c.assess_fee_amt_usd AS assessment_fee,
+c.trans_amt_usd AS tpv,
+c.total_trans_fee_amt_usd
+FROM pypl-edw.pp_access_views.tfc_cc_transaction AS c
+INNER JOIN pypl-edw.pp_access_views.dw_cc_txn_extn AS c1 ON c.cc_transid = c1.cc_txnid
+INNER JOIN pypl-edw.pp_access_views.dw_cc_transaction AS c11 ON c.cc_transid = c11.cc_transid
+INNER JOIN pypl-edw.pp_access_views.cdim_country AS b23 ON upper(rtrim(c1.rcvr_cntry)) = upper(rtrim(b23.cntry_code))
+INNER JOIN pypl-edw.pp_access_views.cdim_country AS b24 ON upper(rtrim(c1.card_issuing_cntry)) = upper(rtrim(b24.cntry_code))
+WHERE 1 = 1
+AND c.cc_trans_created_date BETWEEN DATE '2022-03-30' AND DATE '2022-03-31'
+AND c11.cc_trans_created_date BETWEEN DATE '2022-03-30' AND DATE '2022-03-31'
+AND c1.cc_txn_cre_dt BETWEEN DATE '2022-03-30' AND DATE '2022-03-31'
+AND upper(rtrim(c.cc_trans_status)) = 'S'
+AND rtrim(upper(c.cctrans_type)) IN('C','Z')
+and card_issuing_cntry in ('US')
+and rcvr_cntry in ('US')
+;
+
+
+drop table if exists `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_2;
+create table `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_2 CLUSTER BY  cc_transid as
+select
+t.cc_transid,
+t.card_issuing_cntry,
+t.rcvr_cntry,
+t.rcvr_cntry_code,
+t.cc_trans_created_date,
+t.transaction_time,
+t.settlement_hour,
+t.card_brand,
+t.credit_debit,
+t.intchg_plan_Code,
+t.cctrans_type,
+t.txn_Categ_code,
+t.currency_code,
+t.asp_range,
+t.ic_fee,
+t.assessment_fee,
+FORMAT('%s%%', CAST(ROUND((t.ic_fee/t.tpv ) * 100, 7) AS STRING)) AS ic_rate,
+FORMAT('%s%%', CAST(ROUND((t.assessment_fee/t.tpv ) * 100, 7) AS STRING)) AS assessment_rate,
+t.tpv,
+t.customer_id,
+t.merchant_id,
+t.authorizer,
+t.acquirer,
+case when sndr_type_key=1 then 'member' else 'guest' end AS member_guest,
+pmt_flow_key,
+is_pmt_xbdr_y_n,
+CASE
+  WHEN cdim_payment_flow2.busn_line_key = 2
+   AND (upper(cdim_payment_flow2.sub_flow) LIKE '%SEND MONEY%'
+   OR upper(cdim_payment_flow2.sub_flow) LIKE '%LEGACY WAP%'
+   OR upper(cdim_payment_flow2.sub_flow) LIKE '%P2P%'
+   OR upper(cdim_payment_flow2.sub_flow) LIKE '%MONEY REQUEST%')
+   AND upper(cdim_payment_flow2.sub_flow) NOT LIKE '%INVOIC%'
+   AND rtrim(cdim_payment_flow2.trans_subtype_flag) IN(
+    'H'
+  ) THEN 'P2P_FNF'
+  WHEN cdim_payment_flow2.busn_line_key = 2
+   AND (upper(cdim_payment_flow2.sub_flow) LIKE '%SEND MONEY%'
+   OR upper(cdim_payment_flow2.sub_flow) LIKE '%LEGACY WAP%'
+   OR upper(cdim_payment_flow2.sub_flow) LIKE '%P2P%'
+   OR upper(cdim_payment_flow2.sub_flow) LIKE '%MONEY REQUEST%')
+   AND upper(cdim_payment_flow2.sub_flow) NOT LIKE '%INVOIC%'
+   AND rtrim(cdim_payment_flow2.trans_subtype_flag) IN(
+    'G', 'S'
+  ) THEN 'P2P_GNS'
+  WHEN upper(rtrim(cdim_payment_flow2.flow_family)) = 'MT FF MULTI-TENANT' THEN 'Multi-Tenant'
+  WHEN upper(rtrim(cdim_payment_flow2.flow_family)) = 'MP FF EBAY MANAGED PAYMENTS' THEN 'eBay MOR'
+  WHEN upper(cdim_payment_flow2.flow_family) LIKE 'MP%' THEN 'eBay'
+  WHEN upper(cdim_payment_flow2.flow_family) LIKE '%PPFM%' THEN 'PPFM'
+  WHEN rtrim(upper(cdim_payment_flow2.flow_family)) IN(
+    'MS FF PAYPAL PAYMENTS ADVANCED', 'MS FF PAYPAL PAYMENTS PRO'
+  )
+   AND upper(cdim_payment_flow2.primary_flow) LIKE '%DIRECT PAYMENTS%' THEN 'Pro DCC'
+  WHEN rtrim(upper(cdim_payment_flow2.flow_family)) IN(
+    'MS FF EC A LA CARTE', 'MS FF PAYPAL PAYMENTS PRO'
+  )
+   AND (upper(cdim_payment_flow2.sub_flow) LIKE '%- RT'
+   OR upper(cdim_payment_flow2.sub_flow) LIKE '%- RP') THEN 'MS EC Recurring'
+  WHEN rtrim(upper(cdim_payment_flow2.flow_family)) IN(
+    'MS FF EC A LA CARTE', 'MS FF PAYPAL PAYMENTS PRO'
+  )
+   AND (upper(cdim_payment_flow2.sub_flow) NOT LIKE '%- RT'
+  OR upper(cdim_payment_flow2.sub_flow) NOT LIKE '%- RP') THEN 'MS EC Non Recurring'
+  WHEN rtrim(upper(cdim_payment_flow2.flow_family)) IN(
+    'MS FF PAYPAL PAYMENTS ADVANCED'
+  )
+   AND rtrim(upper(cdim_payment_flow2.sub_flow)) IN(
+    'MS PPA EC PRO - BML BUTTON', 'MS PPA EC PRO - HERMES', 'MS PPA EC PRO - HOSTED', 'MS PPA MOBILE EC PRO - HERMES', 'MS PPA MOBILE EC PRO - HOSTED'
+  ) THEN 'MS EC Non Recurring'
+  WHEN rtrim(upper(cdim_payment_flow2.flow_family)) IN(
+    'MS FF WEBSITE PAYMENTS STANDARD'
+  )
+   AND rtrim(upper(cdim_payment_flow2.sub_flow)) IN(
+    'MS AUTO BILLING', 'MS INSTALLMENT', 'MS SUBSCRIPTION'
+  ) THEN 'WPS Recurring'
+  WHEN rtrim(upper(cdim_payment_flow2.flow_family)) IN(
+    'MS FF WEBSITE PAYMENTS STANDARD'
+  )
+   AND rtrim(upper(cdim_payment_flow2.sub_flow)) NOT IN(
+    'MS AUTO BILLING', 'MS INSTALLMENT', 'MS SUBSCRIPTION'
+  ) THEN 'WPS Non Recurring'
+  WHEN rtrim(upper(cdim_payment_flow2.flow_family)) IN(
+    'MS FF HOSTED SOLE SOLUTION', 'MS FF PAYPAL PLUS', 'MS FF VIRTUAL TERMINAL'
+  ) THEN 'MS Unbranded Others'
+  WHEN upper(rtrim(cdim_payment_flow2.flow_family)) = 'MS FF EMAIL PAYMENTS'
+   AND upper(cdim_payment_flow2.sub_flow) LIKE '%INVOI%' THEN 'Invoicing'
+  WHEN upper(cdim_payment_flow2.primary_flow) LIKE '%MASSPAY%' THEN 'Payouts'
+  WHEN rtrim(upper(cdim_payment_flow2.flow_family)) IN(
+    'MS FF PAYPAL HERE', 'MS FF POINT OF SALE', 'MS FF MOBILE TOKEN', 'MS FF PARTNER PAY', 'MS FF ONLINE TOKEN'
+  ) THEN 'Retail'
+  WHEN rtrim(upper(cdim_payment_flow2.flow_family)) IN(
+    'MS FF PAYPAL ANYWHERE CARD'
+  ) THEN 'Cash Card'
+  WHEN rtrim(upper(cdim_payment_flow2.flow_family)) IN(
+    'MS FF DEBIT CARD - BDC'
+  ) THEN 'MDC'
+  WHEN upper(cdim_payment_flow2.flow_family) LIKE 'MS FF%TOKEN' THEN 'Retail'
+  WHEN rtrim(upper(cdim_payment_flow2.flow_family)) IN(
+    'MS FF ADAPTIVE PAYMENTS'
+  ) THEN 'Adaptive Payments'
+  ELSE 'MS Core Others'
+END AS product_flow
+from pypl-edw.pp_discovery_views.fact_payment_detail b
+left join pypl-edw.pp_access_views.cdim_payment_flow2 on b.pmt_flow_key=cdim_payment_flow2.pmt_flow_key2
+join `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_1 t on b.cc_txnid = t.cc_transid
+where 1=1
+and b.cal_dt BETWEEN DATE '2022-03-30' AND DATE '2022-03-31'
+and b.is_pmt_official_y_n = 'Y'
+and b.cc_txnid <> 0
+;
+
+
+SELECT * FROM `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_2 limit 1000;
