@@ -12,7 +12,7 @@
 #Networks - yes 
 #txn_category_code - yes 
 #Product level features - yes 
-#Day of the week - transaction - no
+#Day of the week - transaction - yes
 #time of transaction - yes 
 #Customer segment level features - no
 #IC Plan Codes - yes 
