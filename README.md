@@ -5,7 +5,7 @@
 #IC Fee - yes 
 #Assess Fee - yes 
 #TPV - yes 
-#MCC category - no
+#MCC category and high-risk flag- yes
 #Routing/Card Issuer/Receiver Region - yes 
 #ASPs - yes 
 #Card Type - yes 
@@ -14,7 +14,7 @@
 #Product level features - yes 
 #Day of the week - transaction - yes
 #time of transaction - yes 
-#Customer segment level features - no
+#Customer segment level features - yes(need check)
 #IC Plan Codes - yes 
 #Acquirer - yes 
 #Authorizer - yes 
