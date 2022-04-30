@@ -1,0 +1,50 @@
+drop table if exists `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_3;
+create table `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_3 CLUSTER BY customer_id, merchant_id as
+select
+--t.cc_transid,
+--p.cc_txnid,
+t.card_issuing_cntry,
+t.rcvr_cntry,
+t.rcvr_cntry_code,
+t.cc_trans_created_date,
+p.day_of_wk,
+p.day_of_wk_ddd_name,
+t.transaction_time,
+t.settlement_hour,
+t.card_brand,
+t.credit_debit,
+t.intchg_plan_Code,
+--t.cctrans_type,
+t.txn_Categ_code,
+t.currency_code,
+t.asp_range,
+t.customer_id,
+cust.sndr_id, 
+cust.cust_engagmnt_sub_seg_name,
+t.merchant_id,
+--m.cust_id,
+m.busn_name,
+m.merchant_mcc_code,
+m.ind_name,
+t.authorizer,
+t.acquirer,
+p.member_guest,
+p.product_flow,
+SUM(t.ic_fee) AS ic_fee,
+SUM(t.assessment_fee) AS assess_fee,
+--FORMAT('%s%%', CAST(ROUND((t.ic_fee/NULLIF(t.tpv,0)  ) * 100, 7) AS STRING)) AS ic_rate_perc,
+--FORMAT('%s%%', CAST(ROUND((t.assessment_fee/NULLIF(t.tpv,0)  ) * 100, 7) AS STRING)) AS assessment_rate_perc,
+--ROUND(t.ic_fee/NULLIF(t.tpv,0) , 7)  AS ic_rate,
+--ROUND(t.assessment_fee/NULLIF(t.tpv,0) ,7 ) AS assessment_rate,
+count(t.cc_transid) AS txn_count,
+sum(t.tpv) AS tpv
+from `pypl-edw`.pp_oap_valentina_t.Product_Flow p 
+join `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_1 t on p.cc_txnid = t.cc_transid
+join `pypl-edw`.pp_oap_valentina_t.mcc_cust_base m on m.cust_id=t.merchant_id
+join `pypl-edw`.pp_oap_valentina_t.Customer_segments cust on t.customer_id=cust.sndr_id
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25
+;
+
+
+
+SELECT * FROM `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_3 limit 100;
