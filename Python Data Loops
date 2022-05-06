@@ -1,0 +1,60 @@
+import sys, os, datetime, traceback
+import pyodbc as pyodbc
+from datetime import datetime,timedelta
+from pandas.tseries.offsets import MonthEnd
+import pandas as pd
+import numpy as np
+pd.options.display.max_columns=None
+pd.options.display.float_format='{:.3f}'.format
+import matplotlib.pyplot as plt
+from pylab import rcParams
+import matplotlib.dates as mdates
+import seaborn as sns
+sns.set(color_codes=True)
+%matplotlib inline
+from datetime import datetime,timedelta
+import itertools
+from collections import OrderedDict
+import pickle
+# warning module 
+import warnings
+warnings.filterwarnings("ignore")
+# Fastload packages
+%config PPMagics.fastload = True
+%config PPMagics.autolimit=0
+# Itertools packages
+import itertools
+from collections import OrderedDict
+#Time Series Packages
+import statsmodels.api as sm
+from statsmodels.tsa.seasonal import seasonal_decompose
+# import pmdarima as pm
+from statsmodels.tsa.stattools import adfuller
+%config PPMagics.qgrid=False
+count = 1
+for beg in pd.date_range('2021-10-01', '2022-03-31', freq='MS'):
+    start_date = beg.strftime("%Y-%m-%d")
+    end_date = (beg + MonthEnd(1)).strftime("%Y-%m-%d")
+    print('Start date of the month-',start_date)
+    print('End date of the month-',end_date)
+    if (count==0):
+        count = count + 1
+        q = """ Insert into `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_2
+create table TABLE_NAME CLUSTER BY cc_transid as
+SELECT
+BQ TABLE
+...
+AND c.cc_trans_created_date BETWEEN DATE '"""+start_date+"""' and DATE '"""+end_date+"""'
+....
+ """
+        %ppbq $q
+    else:
+        q = """Insert into TABLE_NAME CLUSTER BY cc_transid as
+SELECT
+BQ TABLE
+...
+AND c.cc_trans_created_date BETWEEN DATE '"""+start_date+"""' and DATE '"""+end_date+"""'
+....
+"""
+        %ppbq $q
+    print("Query Ended - Please check the Data")
