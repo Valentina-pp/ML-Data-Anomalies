@@ -73,6 +73,7 @@ AND upper(rtrim(c11.cc_trans_status)) = 'S'
 AND rtrim(upper(c.cctrans_type)) IN('C','Z')
 and card_issuing_cntry in ('US')
 and rcvr_cntry in ('US')
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24
 ;
 
 /*MCC merchants and Industry data*/
@@ -109,6 +110,7 @@ WHEN wu_ind_0.ui_new_subindustry_id IN(
 ELSE wu_ind_0.ui_new_subindustry_id
 END = ind_5310.ind_id
 inner join (select merchant_id from `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_1 group by 1) m on b.cust_id=m.merchant_id
+GROUP BY 1,2,3,4,5,6
 ;
 
 /*Product Flow data*/
@@ -116,12 +118,13 @@ inner join (select merchant_id from `pypl-edw`.pp_oap_valentina_t.US_detailed_ca
 drop table if exists `pypl-edw`.pp_oap_valentina_t.Product_Flow;
 create table `pypl-edw`.pp_oap_valentina_t.Product_Flow CLUSTER BY cc_txnid  as
 select
-cc_txnid,
+DISTINCT (cc_txnid) cc_txnid,
 case when sndr_type_key=1 then 'member' else 'guest' end AS member_guest,
 --pmt_flow_key,
 --is_pmt_xbdr_y_n,
 cal.day_of_wk,
 cal.day_of_wk_ddd_name,
+cal.mth_id,
 CASE
   WHEN cdim_payment_flow2.busn_line_key = 2
    AND (upper(cdim_payment_flow2.sub_flow) LIKE '%SEND MONEY%'
@@ -205,6 +208,7 @@ where 1=1
 and b.cal_dt BETWEEN DATE '2021-10-01' AND DATE '2022-03-31'
 and b.is_pmt_official_y_n = 'Y'
 and b.cc_txnid <> 0
+GROUP BY 1,2,3,4,5,6
 ;
 
 /*Customer segment level features*/
@@ -217,13 +221,14 @@ cust_engagmnt_sub_seg_name
 FROM `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_1 a
 JOIN  `pypl-edw`.pp_discovery_views.dim_calendar_day AS cal ON a.cc_trans_created_date = cal.cal_dt
 left join pypl-edw.pp_ent_anlytcs_views.fact_sndr_cohort_pmt_mth c on a.customer_id=c.sndr_id and cal.mth_id = c.mth_id
+GROUP BY 1,2,3
 ;
 
 
 /*Aggregated Table*/
 
-drop table if exists `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_2;
-create table `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_2 CLUSTER BY  cc_transid as
+drop table if exists `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_All;
+create table `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_All CLUSTER BY  cc_transid as
 select
 t.cc_transid,
 --p.cc_txnid,
@@ -235,20 +240,13 @@ p.day_of_wk,
 p.day_of_wk_ddd_name,
 t.transaction_time,
 t.settlement_hour,
+p.mth_id,
 t.card_brand,
 t.credit_debit,
 t.intchg_plan_Code,
 --t.cctrans_type,
 t.txn_Categ_code,
 t.currency_code,
-t.asp_range,
-t.ic_fee,
-t.assessment_fee,
-FORMAT('%s%%', CAST(ROUND((t.ic_fee/NULLIF(t.tpv,0)  ) * 100, 7) AS STRING)) AS ic_rate_perc,
-FORMAT('%s%%', CAST(ROUND((t.assessment_fee/NULLIF(t.tpv,0)  ) * 100, 7) AS STRING)) AS assessment_rate_perc,
-ROUND(t.ic_fee/NULLIF(t.tpv,0) , 7)  AS ic_rate,
-ROUND(t.assessment_fee/NULLIF(t.tpv,0) ,7 ) AS assessment_rate,
-t.tpv,
 t.customer_id,
 cust.sndr_id, 
 cust.cust_engagmnt_sub_seg_name,
@@ -257,16 +255,24 @@ t.merchant_id,
 m.busn_name,
 m.merchant_mcc_code,
 m.ind_name,
+t.high_risk_flag,
 t.authorizer,
 t.acquirer,
 p.member_guest,
-p.product_flow
+p.product_flow,
+t.asp_range,
+t.ic_fee,
+t.assessment_fee,
+t.tpv,
+FORMAT('%s%%', CAST(ROUND((t.ic_fee/NULLIF(t.tpv,0)  ) * 100, 7) AS STRING)) AS ic_rate_perc,
+FORMAT('%s%%', CAST(ROUND((t.assessment_fee/NULLIF(t.tpv,0)  ) * 100, 7) AS STRING)) AS assessment_rate_perc,
+ROUND(t.ic_fee/NULLIF(t.tpv,0) , 7)  AS ic_rate,
+ROUND(t.assessment_fee/NULLIF(t.tpv,0) ,7 ) AS assessment_rate
 from `pypl-edw`.pp_oap_valentina_t.Product_Flow p 
 join `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_1 t on p.cc_txnid = t.cc_transid
-join `pypl-edw`.pp_oap_valentina_t.mcc_cust_base m on m.cust_id=t.merchant_id
-join `pypl-edw`.pp_oap_valentina_t.Customer_segments cust on t.customer_id=cust.sndr_id
+left join `pypl-edw`.pp_oap_valentina_t.mcc_cust_base m on m.cust_id=t.merchant_id
+left join `pypl-edw`.pp_oap_valentina_t.Customer_segments cust on t.customer_id=cust.sndr_id and cust.mth_id=p.mth_id
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31
 ;
 
-
-
-SELECT * FROM `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_2 limit 100;
+SELECT * FROM `pypl-edw`.pp_oap_valentina_t.US_detailed_cardcost_All limit 10;
